@@ -2,6 +2,7 @@ import time
 import json
 import getopt
 import sys
+import threading
 from urllib.parse import urlparse
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -33,7 +34,6 @@ def parse (result, html, raw):
     result['textContent'] = rip_text(html)
 
 def search (driver, where, what, pages, limit, save_raw):
-    documents = []
     
     # search for what on site where
     driver.get(DDG_HOME)
@@ -49,18 +49,22 @@ def search (driver, where, what, pages, limit, save_raw):
         time.sleep(5)
         anchors = driver.find_elements_by_class_name('result__a')
         for anchor in anchors:
-            result_anchors.append(anchor.get_attribute('href'))
+            result_anchors.append(anchor.get_attribute('href'))	
         
         # stop if we hit max pages or button is not present
         if (page_num >= pages):
             break
         else:
-            button_next = driver.find_element_by_css_selector('input[value="Next"]')
-            if button_next is None:
+            try:
+                button_next = driver.find_element_by_css_selector('input[value="Next"]')
+            except:
                 break
             else:
                 button_next.click()
                 page_num += 1
+
+    anchor_len = len(result_anchors)
+    print(f'found {anchor_len} anchors looking for {what} on {where}...')
 
     # go through each link
     links_seen = 0
@@ -81,38 +85,46 @@ def search (driver, where, what, pages, limit, save_raw):
 
         # go back
         driver.back()
-        documents.append(result)
+        
+        # write results
+        domain = get_domain(where)
+        result['domain'] = domain
+        result_json = json.dumps(result)
+        write_file(f'./results/{domain}_{what}_{links_seen}.json', result_json)
+
         links_seen += 1
         time.sleep(5)
 
-    # return results
-    return documents
+def scrape (options, site, search_terms, pages, limit, save_raw):
+    driver = webdriver.Chrome(options=options)
+    for term in search_terms:
+        search(driver, site, term, pages, limit, save_raw)
+    driver.quit()
 
 def get_domain (url):
     return urlparse(url).netloc
 
 def main (headless, pages, limit, save_raw):
+    
     search_sites = get_cfg('./config/search_sites.cfg')
     search_terms = get_cfg('./config/search_terms.cfg')
 
     options = Options()
     options.headless = headless
-    driver = webdriver.Chrome(options=options)
     
-    site_results = {}
-    for site in search_sites:
-        domain = get_domain(site)
-        site_results[domain] = []
-
-        for term in search_terms:
-            results = search(driver, site, term, pages, limit, save_raw)
-            for result in results:
-                site_results[domain].append(result)
+    for i in range(0, len(search_sites), 2):
+        threads = []
+        chunk = search_sites[i:i+2]
         
-    site_results_json = json.dumps(site_results)
-    write_file(f'./results/results.json', site_results_json)
-            
-    driver.quit()
+        for site in chunk:
+            thread = threading.Thread(target=scrape, args=(options, site, search_terms, pages, limit, save_raw))
+            threads.append(thread)
+            thread.start()
+            time.sleep(10)
+
+        for thread in threads:
+            pass
+            thread.join()
 
 headless = True
 pages = 1
