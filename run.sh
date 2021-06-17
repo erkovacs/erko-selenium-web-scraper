@@ -1,1 +1,1 @@
-python3 scraper.py -n -p 1 -l 25 -r -c 2
+python3 scraper.py -n -p 2 -l 25 -r -c 2

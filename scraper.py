@@ -36,7 +36,7 @@ def parse (result, html, raw):
 
     result['textContent'] = rip_text(html)
 
-def search (driver, where, what, pages, limit, save_raw):
+def search (driver, mem, where, what, pages, limit, save_raw):
     
     # search for what on site where
     driver.get(DDG_HOME)
@@ -53,7 +53,11 @@ def search (driver, where, what, pages, limit, save_raw):
         anchors = driver.find_elements_by_class_name('result__a')
         for anchor in anchors:
             href = anchor.get_attribute('href')
-            result_anchors[href] = href
+            if href in mem:
+                continue
+            else:
+                result_anchors[href] = href
+                mem[href] = href
         
         # stop if we hit max pages or button is not present
         if (page_num >= pages):
@@ -80,8 +84,15 @@ def search (driver, where, what, pages, limit, save_raw):
         result['href'] = anchor
         
         # navigate there
-        driver.get(anchor)
-        time.sleep(5)
+        try:
+            driver.get(anchor)
+            time.sleep(5)
+        except Exception as e:
+            print(f'Error: {e}')
+            driver.back()
+            links_seen += 1
+            time.sleep(5)
+            continue
         
         # get html
         html = driver.page_source
@@ -101,8 +112,9 @@ def search (driver, where, what, pages, limit, save_raw):
 
 def scrape (options, site, search_terms, pages, limit, save_raw):
     driver = webdriver.Chrome(options=options)
+    mem = {}
     for term in search_terms:
-        search(driver, site, term, pages, limit, save_raw)
+        search(driver, mem, site, term, pages, limit, save_raw)
     driver.quit()
 
 def get_domain (url):
